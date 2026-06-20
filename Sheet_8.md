@@ -1,309 +1,113 @@
+
+### Question 11.14
+
+**Question**
+Consider a modified padded RSA encryption: messages have length exactly $||N||/2$. To encrypt, first compute $\hat{m} := 0\text{x}00 || r || 0\text{x}00 || m$ where $r$ is a uniform string. Compute ciphertext $c := [\hat{m}^e \bmod N]$. The receiver decrypts and returns an error if the format is not exactly $0\text{x}00$ followed by arbitrary bits, followed by $0\text{x}00$.
+Show that this scheme is not CCA-secure. Why is it easier to construct an attack here than on PKCS#1 v1.5?
+
+**Answer**
+This scheme is not CCA-secure because the attacker can multiply the ciphertext by $2^e$ to shift the plaintext bits, bypassing the format check 50% of the time.
+
+**Explanation**
+
+* Because of RSA's mathematical properties, multiplying a ciphertext by $2^e$ effectively multiplies the underlying plaintext by 2.
+* In binary, multiplying by 2 is just a left bit-shift.
+* The original format is `0x00 || r1 ... || 0x00 || m`.
+* When you shift this left by 1 bit, the first bit of the random string ($r_1$) gets pushed into the leading `0x00` block.
+* If $r_1$ was `1`, the leading block is no longer `0x00`. The oracle sees the broken format and returns an **Error**.
+* If $r_1$ was `0` (which happens 50% of the time), the leading block stays `0x00`. The format is still valid! The oracle decrypts it and gives you the shifted message.
+* By seeing if an error occurs or reading the shifted message, the attacker easily determines which message was encrypted, breaking CCA security.
+* **Why it fails on PKCS#1 v1.5:** That standard starts with `0x00 || 0x02`. If you shift that left (multiply by 2), it becomes `0x00 || 0x04`. The format is *always* ruined, the oracle *always* returns an error, and the attacker learns nothing.
+
+**Steps to solve similar questions**
+
+* Look at the exact padding format of the plaintext.
+* Think about RSA's homomorphic property: what happens if you multiply the ciphertext by a small constant like $2^e$?
+* Determine how that multiplication alters the plaintext format (e.g., bit shifting).
+* Check if the decryption oracle will accept or reject the newly formatted plaintext, and what that reveals to the attacker.
+
 ---
-created: 2026-06-20T11:03
-updated: 2026-06-20T11:03
+
+### Question 11.15
+
+**Question**
+Consider an RSA encryption scheme where a user encrypts a message $m$ by computing $\hat{m} := H(m) || m$ and outputting the ciphertext $c := [\hat{m}^e \bmod N]$. The receiver verifies the correct form before outputting $m$. Prove or disprove that this scheme is CCA-secure if H is a random oracle.
+
+**Answer**
+Disprove. This scheme is not even CPA-secure, let alone CCA-secure.
+
+**Explanation**
+
+* Look closely at the encryption formula: $\hat{m} := H(m) || m$.
+* There is absolutely no randomness (like a random string $r$ or $k$) used in this process.
+* Because the hash function $H$ is deterministic, encrypting the exact same message will always produce the exact same ciphertext.
+* Any deterministic public-key encryption scheme is insecure against Chosen-Plaintext Attacks (CPA).
+* An attacker can just take the public key, manually encrypt the two possible guess messages themselves, and see which result perfectly matches the intercepted ciphertext.
+
+**Steps to solve similar questions**
+
+* Check the encryption formula for a random variable (e.g., $r$).
+* If there is no random variable, the encryption is deterministic.
+* State immediately that deterministic public-key encryption cannot be CPA-secure.
+
 ---
-### Question 4.6
 
-**Question:** Consider the following MAC for messages of length $l(n) = 2n - 2$ using a pseudorandom function $F$. On input a message $m_0 || m_1$ with $|m_0| = |m1| = n - 1$ and key $k \in \{0,1\}^n$, algorithm Mac outputs
+### Question 12.5
 
-$t = F_k(0 || m_0) || F_k(1 || m_1)$
+**Question**
+In encoded RSA signatures, the signature is $\sigma := [enc(m)^d \bmod N]$.
+(a) How is verification performed?
+(b) Why does this prevent the "no-message attack"?
+(c, d, e) Show that encoded RSA is insecure if $enc(m) = m \cdot \alpha$ (which happens if you just pad with zeros like $0...0 || m || 0...0$). Show a forgery attack for an arbitrary $e$.
 
-Algorithm Vrfy is defined in the natural way. Is (Gen, Mac, Vrfy) secure? Prove your answer.
+**Answer**
+(a) Verification is done by checking if $\sigma^e \equiv enc(m) \bmod N$.
+(b) It prevents the attack because a random signature won't match the strict formatting rules of $enc(m)$.
+(c, d, e) It is insecure because the padding acts as a mathematical multiplier, allowing attackers to forge signatures by multiplying/dividing valid signatures.
 
-**Answer:** No. This MAC is completely insecure.
+**Explanation**
 
-**Detailed Explanation:**
+* **Verification (a):** The verifier takes the signature, raises it to the public exponent $e$, and checks if the result exactly matches the publicly known encoded version of the message.
+* **No-Message Attack (b):** In a no-message attack, an attacker picks a random signature $\sigma$ and hopes it works for *some* message. But $\sigma^e$ will just look like random garbage. Because $enc(m)$ forces the plaintext to have a very specific format (like starting with zeros), the random garbage will almost never match that format, so the attack fails.
+* **The Forgery Attack (e):** If the encoding is just adding zeros, it mathematically equals multiplying the message by a constant $\alpha$.
+* To forge a signature for the message `8`:
+1. The attacker asks the oracle to sign message `4`, getting $\sigma_4$.
+2. The attacker asks the oracle to sign message `2`, getting $\sigma_2$.
+3. The attacker calculates a forged signature: $\sigma_{forged} = (\sigma_4^2 / \sigma_2) \bmod N$.
 
-To prove a MAC is insecure, we must demonstrate a successful Chosen-Message Attack (CMA). This means an attacker can query the MAC oracle for a few messages and then produce a valid tag for a _new_ message they never queried.
 
-The fatal flaw here is that the tag is generated in two completely isolated, independent halves:
+* Why it works: $(\sigma_4^2 / \sigma_2)^e = enc(4)^2 / enc(2) = (4\alpha)^2 / (2\alpha) = 16\alpha^2 / 2\alpha = 8\alpha = enc(8)$. The forged signature perfectly verifies for the message `8`!
 
-- $t_{left} = F_k(0 || m_0)$
-    
-- $t_{right} = F_k(1 || m_1)$
-    
+**Steps to solve similar questions**
 
-Because the left half does not cryptographically bind to the right half, an attacker can perform a "Mix-and-Match" (or cut-and-paste) attack.
+* Identify if the encoding/padding function can be represented as a simple mathematical operation (like multiplication by a constant).
+* Use the homomorphic property of RSA ($\sigma_1 \cdot \sigma_2 = \sigma_{m1 \cdot m2}$).
+* Build a combination of signed messages (using multiplication, division, or squaring) that algebraically resolves to the target message you want to forge.
 
-1. The attacker chooses two completely different messages: $M^{(1)} = m_0 || m_1$ and $M^{(2)} = m'_0 || m'_1$.
-    
-2. The attacker queries $M^{(1)}$ to the oracle and gets tag $t^{(1)} = t_0 || t_1$.
-    
-3. The attacker queries $M^{(2)}$ to the oracle and gets tag $t^{(2)} = t'_0 || t'_1$.
-    
-4. The attacker now constructs a _new_ forged message by mixing the halves: $M^* = m_0 || m'_1$.
-    
-5. The attacker constructs the forged tag by combining the corresponding halves from the previous queries: $t^* = t_0 || t'_1$.
-    
+---
 
-When the verifier checks $M^*$, it computes $F_k(0 || m_0)$ (which matches $t_0$) and $F_k(1 || m'_1)$ (which matches $t'_1$). The verifier accepts the tag as valid. Since $M^*$ was never explicitly queried, the adversary wins.
+### Question 12.9
 
-**Steps to solve similar questions:**
+**Question**
+A strong one-time-secure signature scheme means that given a signature $\sigma'$ on message $m'$, it is infeasible to output a *new* valid signature $\sigma$ for that same message $m'$.
+(a) Give a formal definition.
+(c) Construct a strong one-time-secure signature scheme.
 
-1. Check if the tag generation is split into independent parts (concatenation without a shared random nonce or overlapping data).
-    
-2. If the parts are independent, ask: "Can I query two different messages, chop their tags in half, and paste them together?"
-    
-3. Construct the exact forgery payload to prove the mix-and-match attack works.
-    
+**Answer**
+(a) The adversary wins if they output $(m, \sigma) \neq (m', \sigma')$ where $Vrfy_{pk}(m, \sigma) = 1$.
+(c) Use a standard one-time signature, but sign the hash of the message $H(m)$ using a collision-resistant hash function.
 
-### Question 4.7(a)
+**Explanation**
 
-**Question:** Let $F$ be a pseudorandom function. Show that the following MAC is insecure, even for fixed-length messages:
+* **Formal Definition (a):** The attacker is given the public key and is allowed to ask the oracle to sign exactly *one* message, $m'$. The oracle returns $\sigma'$. The attacker wins if they can produce a valid pair $(m, \sigma)$ that is not perfectly identical to $(m', \sigma')$. (Meaning they either forged a signature for a new message, or found a second, different signature for the old message).
+* **Construction (c):** To make a scheme "strong", we incorporate a collision-resistant hash function.
+* We generate a hash key $s$ as part of the public key.
+* Instead of signing the message directly, we sign $H^s(m)$.
+* If an attacker tries to find a second, different signature $\sigma$ for the same message $m$, they are mathematically forced to find a collision in the hash function.
+* Because we defined the hash function as collision-resistant, this is computationally impossible, proving the scheme is strong.
 
-$t = F_k(m_1) \oplus ... \oplus F_k(m_\ell)$
+**Steps to solve similar questions**
 
-**Answer:** This MAC is insecure.
-
-**Detailed Explanation:**
-
-The vulnerability lies in the mathematical properties of the XOR ($\oplus$) operation. XOR is strictly **commutative**, meaning the order of operations does not matter ($A \oplus B = B \oplus A$).
-
-Because the tag generation ignores the order of the blocks, an attacker can simply rearrange the blocks of a known message to forge a tag for a new message.
-
-1. The attacker chooses a 2-block message: $M = m_1 || m_2$ (ensuring $m_1 \neq m_2$).
-    
-2. The attacker queries $M$ to the oracle and receives the tag $t = F_k(m_1) \oplus F_k(m_2)$.
-    
-3. The attacker constructs a forged message by swapping the blocks: $M^* = m_2 || m_1$.
-    
-4. The attacker outputs the exact same tag $t$ for $M^*$.
-    
-
-When the verifier checks $M^*$, they will compute $F_k(m_2) \oplus F_k(m_1)$. Because of commutativity, this perfectly equals $F_k(m_1) \oplus F_k(m_2) = t$. The forgery is successful without needing to calculate anything new.
-
-**Steps to solve similar questions:**
-
-1. Look at how the block outputs are combined.
-    
-2. If the combining operation is commutative (like XOR or regular addition without position-dependent padding), test a reordering attack.
-    
-3. Show that swapping two blocks produces a mathematically identical tag.
-    
-
-### Question 4.7(b)
-
-**Question:** Let $F$ be a pseudorandom function. Show that the following MAC is insecure, even for fixed-length messages:
-
-$t = F_k(\langle 1 \rangle || m_1) \oplus ... \oplus F_k(\langle \ell \rangle || m_\ell)$
-
-where $\langle i \rangle$ is the $n/2$-bit encoding of the integer $i$.
-
-**Answer:** This MAC is insecure.
-
-**Detailed Explanation:**
-
-The designer added the block index $\langle i \rangle$ to prevent the simple block-swapping attack from part (a). However, XOR is a **linear** operation ($x \oplus x = 0$). An attacker can exploit this cancellation property by querying multiple carefully chosen messages and XORing their resulting tags together to forge a new tag.
-
-1. The attacker chooses four distinct blocks: $m_1, m'_1, m_2, m'_2$.
-    
-2. The attacker queries three specific 2-block messages:
-    
-    - $M_A = m_1 || m_2 \implies t_A = F_k(1||m_1) \oplus F_k(2||m_2)$
-        
-    - $M_B = m_1 || m'_2 \implies t_B = F_k(1||m_1) \oplus F_k(2||m'_2)$
-        
-    - $M_C = m'_1 || m_2 \implies t_C = F_k(1||m'_1) \oplus F_k(2||m_2)$
-        
-3. The attacker wants to forge a tag for the unqueried message $M^* = m'_1 || m'_2$.
-    
-4. The attacker computes $t^* = t_A \oplus t_B \oplus t_C$.
-    
-
-Let's expand the math to see what happens:
-
-$t^* = [F_k(1||m_1) \oplus F_k(2||m_2)] \oplus [F_k(1||m_1) \oplus F_k(2||m'_2)] \oplus [F_k(1||m'_1) \oplus F_k(2||m_2)]$
-
-Because $X \oplus X = 0$, the identical terms cancel out:
-
-- $F_k(1||m_1) \oplus F_k(1||m_1) = 0$
-    
-- $F_k(2||m_2) \oplus F_k(2||m_2) = 0$
-    
-
-We are left entirely with:
-
-$t^* = F_k(2||m'_2) \oplus F_k(1||m'_1) = F_k(1||m'_1) \oplus F_k(2||m'_2)$
-
-This is exactly the valid tag for $M^*$. The attacker successfully forged it.
-
-**Steps to solve similar questions:**
-
-1. If the tags are combined using XOR, look for linear combinations that allow cancellation.
-    
-2. Query 3 messages that share common blocks.
-    
-3. XOR their tags together mathematically and cross out the duplicates.
-    
-4. If the remaining terms represent a valid tag for a 4th, unqueried message, the scheme is broken.
-    
-
-### Question 4.7(c)
-
-**Question:** Let $F$ be a pseudorandom function. Show that the following MAC is insecure, even for fixed-length messages:
-
-choose random $r$ from $\{0,1\}^n$
-
-$t = F_k(r) \oplus F_k(\langle 1 \rangle || m_1) \oplus ... \oplus F_k(\langle \ell \rangle || m_\ell)$
-
-and let the tag be $\langle r, t \rangle$.
-
-**Answer:** This MAC is insecure.
-
-**Detailed Explanation:**
-
-In a secure randomized MAC, the random value $r$ must be generated honestly by the sender. However, during verification, the verifier just blindly reads the $r$ provided by the attacker in the tag pair $\langle r, t \rangle$. This means an attacker can manipulate $r$ to intentionally cause a catastrophic mathematical collision.
-
-Let's look at the easiest case: a 1-block message.
-
-The valid tag formula is: $t = F_k(r) \oplus F_k(\langle 1 \rangle || m_1)$.
-
-1. The attacker wants to forge a tag for a message $m_1$ _without ever querying the oracle_.
-    
-2. The attacker maliciously chooses the "random" value to be exactly equal to the block data: $r = \langle 1 \rangle || m_1$.
-    
-3. Substitute this chosen $r$ into the tag formula:
-    
-    $t = F_k(\langle 1 \rangle || m_1) \oplus F_k(\langle 1 \rangle || m_1)$
-    
-4. Because any value XORed with itself is 0, the equation collapses: $t = 0^n$ (a string of all zeros).
-    
-5. The attacker outputs the tag pair $\langle (\langle 1 \rangle || m_1), 0^n \rangle$.
-    
-
-When the verifier checks this, they will calculate $F_k(r) \oplus F_k(\langle 1 \rangle || m_1)$, which will evaluate to $0^n$, perfectly matching the $t$ provided by the attacker. This is an existential forgery requiring **zero** queries to the oracle.
-
-**Steps to solve similar questions:**
-
-1. Determine if the adversary has control over any inputs that feed into the PRF during verification (like an attached nonce or random $r$).
-    
-2. Check if the adversary can set that controllable input equal to another part of the equation.
-    
-3. If it uses XOR, forcing two inputs to be identical will cancel them out to a predictable value (like $0^n$).
-    
-
-### Question 4.13(a)
-
-**Question:** Say the sender and receiver do not agree on the message length in advance, and the sender only authenticates messages of length 2n. Show that an adversary can forge a valid tag on a message of length 4n.
-
-**Answer:** Basic CBC-MAC is insecure for variable-length messages.
-
-**Detailed Explanation:**
-
-CBC-MAC processes blocks in a chain, where the output of one block becomes the XOR input for the next. This creates a "Length Extension Attack" vulnerability.
-
-1. The attacker queries a 2-block message $M = m_1 || m_2$ and receives the valid tag $t$.
-    
-    _(Note: The internal state after block 1 is $C_1 = F_k(m_1)$, and the tag is $t = F_k(C_1 \oplus m_2)$)._
-    
-2. The attacker wants to forge a 4-block message. They construct:
-    
-    $M^* = m_1 || m_2 || (m_1 \oplus t) || m_2$
-    
-3. Let's trace how the verifier calculates CBC-MAC on $M^*$:
-    
-    - **Block 1:** $C_1 = F_k(m_1)$
-        
-    - **Block 2:** $C_2 = F_k(C_1 \oplus m_2) = t$
-        
-    - **Block 3 (The trick):** The verifier XORs the state ($C_2 = t$) with the next block ($m_1 \oplus t$).
-        
-        $C_3 = F_k(t \oplus (m_1 \oplus t))$. The $t$'s cancel out! $C_3 = F_k(m_1) = C_1$.
-        
-    - **Block 4:** The state is exactly what it was after Block 1. So, $C_4 = F_k(C_3 \oplus m_2) = F_k(C_1 \oplus m_2) = t$.
-        
-4. The final calculated tag for the 4-block message is exactly $t$. The attacker outputs $t$ as the forged tag.
-    
-
-**Steps to solve similar questions:**
-
-1. Write down the internal state chaining rule for CBC-MAC: $C_i = F_k(C_{i-1} \oplus m_i)$.
-    
-2. Use a previously obtained tag $t$ to craft a block that cancels out the current chain state (e.g., $m_{new} = m_1 \oplus t$).
-    
-3. This resets the internal state, allowing you to append old blocks and predictably arrive at the same final tag.
-    
-
-### Question 4.13(b)
-
-**Question:** Say the receiver only accepts 3-block messages, but the sender authenticates messages of any length that is a multiple of n. Show that an adversary can forge a valid tag on a new message.
-
-**Answer:** This construction is insecure.
-
-**Detailed Explanation:**
-
-Here, the attacker exploits the oracle's willingness to sign messages of _any_ length to simulate the internal chaining states of a 3-block message, step by step.
-
-1. The attacker wants to forge a tag for the 3-block message $M^* = m_1 || m_2 || m_3$. They will do this by querying three separate 1-block messages.
-    
-2. **Query 1:** Ask the oracle to sign the 1-block message $m_1$. Receive tag $t_1 = F_k(m_1)$.
-    
-3. **Query 2:** Calculate a new 1-block message by XORing the first tag with the desired second block: $(t_1 \oplus m_2)$. Ask the oracle to sign it. Receive tag $t_2 = F_k(t_1 \oplus m_2)$.
-    
-4. **Query 3:** Calculate another 1-block message: $(t_2 \oplus m_3)$. Ask the oracle to sign it. Receive tag $t_3 = F_k(t_2 \oplus m_3)$.
-    
-5. The attacker outputs $t_3$ as the valid tag for the full 3-block message $M^*$.
-    
-
-Let's prove the verifier will accept this. The verifier runs CBC-MAC on $m_1 || m_2 || m_3$:
-
-- State 1: $C_1 = F_k(m_1)$. (This equals $t_1$).
-    
-- State 2: $C_2 = F_k(C_1 \oplus m_2) = F_k(t_1 \oplus m_2)$. (This equals $t_2$).
-    
-- State 3: $C_3 = F_k(C_2 \oplus m_3) = F_k(t_2 \oplus m_3)$. (This equals $t_3$).
-    
-
-The final tag is mathematically guaranteed to be $t_3$. Because the attacker only ever asked the oracle to sign 1-block messages, they successfully executed an existential forgery on a 3-block message.
-
-**Steps to solve similar questions:**
-
-1. Break down the target MAC algorithm into its step-by-step internal states.
-    
-2. Ask the oracle for the tag of step 1.
-    
-3. Use that tag to manually compute the required input for step 2, and query _that_ as a new, independent message.
-    
-4. Repeat until you reach the final state, using the last returned tag as your forgery.
-    
-
-### Question 5.3
-
-**Question:** Let (Gen, H) be a collision-resistant hash function. Is (Gen, $\hat{H}$) defined by $\hat{H}(x) = H(H(x))$ necessarily collision resistant?
-
-**Answer:** Yes. Composing a collision-resistant hash function with itself maintains collision resistance.
-
-**Detailed Explanation:**
-
-In cryptography, we prove this using a "Proof by Contradiction" (or a Reduction). We assume the new function $\hat{H}$ is broken, and prove that this implies the original function $H$ must also be broken. Since $H$ is defined as unbreakable, our assumption must be false.
-
-**Proof:**
-
-Assume there exists an adversary that can find a collision in $\hat{H}$. This means they can find two distinct inputs $x \neq x'$ such that:
-
-$H(H(x)) = H(H(x'))$
-
-Let's analyze the internal states. Let $y = H(x)$ and $y' = H(x')$.
-
-This leaves us with exactly two possible cases:
-
-- **Case 1: $y = y'$**
-    
-    This means $H(x) = H(x')$. Since we already established that $x \neq x'$, the pair $(x, x')$ constitutes a direct collision for the original hash function $H$.
-    
-- **Case 2: $y \neq y'$**
-    
-    If the internal states are different, but the final output is the same, this means $H(y) = H(y')$. Since $y \neq y'$, the pair $(y, y')$ constitutes a valid collision for the original hash function $H$.
-    
-
-In _both_ possible scenarios, finding a collision in $\hat{H}$ immediately yields a collision in $H$. Because $H$ is strictly defined as collision-resistant (meaning it is computationally infeasible to find a collision in it), it must also be computationally infeasible to find a collision in $\hat{H}$.
-
-**Steps to solve similar questions:**
-
-1. Start the proof by assuming the new construction is broken (i.e., a collision exists: $f(x) = f(x')$ where $x \neq x'$).
-    
-2. Substitute the definition of the new function into the equation.
-    
-3. Break the logic down into cases based on whether the inner functions evaluate to the same value or different values.
-    
-4. Show that in every single case, the equality yields a direct collision for the underlying cryptographic primitive, completing the reduction.
+* Understand the difference between standard security (cannot forge a *new message*) and strong security (cannot forge a *new signature* for an old message).
+* When asked to build a strong scheme, almost always introduce a Collision-Resistant Hash Function into the signing process.
+* Argue that breaking the strong security requirement would require finding a hash collision, which is impossible by definition.
